@@ -1,0 +1,1013 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>ActuateUMICH Demo (Mobile View)</title>
+  <script src="https://unpkg.com/react@18.2.0/umd/react.development.js" onerror="document.getElementById('error').style.display='block';document.getElementById('error').innerText='Failed to load React. Check network or try another browser.';"></script>
+  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.development.js" onerror="document.getElementById('error').style.display='block';document.getElementById('error').innerText='Failed to load ReactDOM. Check network or try another browser.';"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js" onerror="document.getElementById('error').style.display='block';document.getElementById('error').innerText='Failed to load Babel. Check network or try another browser.';"></script>
+  <script src="https://cdn.tailwindcss.com" onerror="document.getElementById('error').style.display='block';document.getElementById('error').innerText='Failed to load Tailwind CSS. Check network or try another browser.';"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" onerror="document.getElementById('error').style.display='block';document.getElementById('error').innerText='Failed to load Leaflet CSS. Check network or try another browser.';" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" onerror="document.getElementById('error').style.display='block';document.getElementById('error').innerText='Failed to load Leaflet JS. Check network or try another browser.';"></script>
+  <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="https://via.placeholder.com/180x180.png?text=ActuateUMICH">
+  <style>
+    body {
+      background-color: #000;
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: 'Inter', Arial, sans-serif;
+      color: #fff;
+    }
+    #loading, #error {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: #fff;
+      z-index: 1000;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 20px;
+      border-radius: 8px;
+    }
+    .phone-frame {
+      width: 375px;
+      height: 812px;
+      background-color: #00274C;
+      border: 16px solid #000;
+      border-radius: 40px;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+      position: relative;
+      overflow: hidden;
+    }
+    #root {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #1a1a1a;
+    }
+    input, textarea {
+      -webkit-appearance: none;
+      appearance: none;
+      border-radius: 0;
+    }
+    .map-container {
+      width: 100%;
+      height: 100%;
+    }
+    .header-title {
+      font-family: 'League Spartan', sans-serif;
+      font-weight: 700;
+    }
+    .toggle-switch {
+      position: relative;
+      width: 40px;
+      height: 20px;
+      background-color: #ccc;
+      border-radius: 9999px;
+      transition: background-color 0.3s;
+    }
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .toggle-switch .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      background-color: #fff;
+      border-radius: 50%;
+      transition: transform 0.3s;
+    }
+    .toggle-switch input:checked + .slider {
+      transform: translateX(20px);
+    }
+    .toggle-switch input:checked ~ .bg-toggle {
+      background-color: #3b82f6;
+    }
+    .sos-button {
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      border: 0;
+    }
+    .map-marker {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 14px;
+      font-weight: bold;
+      animation: pulse-marker 2s infinite;
+    }
+    .user-marker {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background-color: #3b82f6;
+      animation: pulse-user 2s infinite;
+    }
+    @keyframes pulse-marker {
+      0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(255, 255, 255, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+    }
+    @keyframes pulse-user {
+      0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+      70% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+    }
+    .fade-in {
+      animation: fadeIn 1s ease-in-out;
+    }
+    @keyframes fadeIn {
+      0% { opacity: 0; transform: scale(0.9); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    .speech-bubble {
+      position: relative;
+      background: #3b82f6;
+      border-radius: 10px;
+      padding: 10px;
+      color: white;
+      margin-left: 10px;
+      max-width: 200px;
+    }
+    .speech-bubble::before {
+      content: '';
+      position: absolute;
+      left: -10px;
+      top: 50%;
+      transform: translateY(-50%);
+      border-right: 10px solid #3b82f6;
+      border-top: 10px solid transparent;
+      border-bottom: 10px solid transparent;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">Loading ActuateUMICH Demo...</div>
+  <div id="error" style="display: none;">Error: Unable to render the app. Please check the console (F12) for details.</div>
+  <div class="phone-frame">
+    <div id="root" style="display: none;"></div>
+  </div>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').then(
+          (registration) => {
+            console.log('Service Worker registered with scope:', registration.scope);
+          },
+          (error) => {
+            console.error('Service Worker registration failed:', error);
+          }
+        );
+      });
+    }
+  </script>
+  <script type="text/javascript">
+    var gk_isXlsx = false;
+    var gk_xlsxFileLookup = {};
+    var gk_fileData = {};
+    const cache = {};
+    function filledCell(cell) {
+      return cell !== '' && cell != null;
+    }
+    function loadFileData(filename) {
+      if (cache[filename]) return cache[filename];
+      if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+        try {
+          var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+          var firstSheetName = workbook.SheetNames[0];
+          var worksheet = workbook.Sheets[firstSheetName];
+          var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+          var filteredData = jsonData.filter(row => row.some(filledCell));
+          var headerRowIndex = filteredData.findIndex((row, index) =>
+            row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+          );
+          if (headerRowIndex === -1 || headerRowIndex > 25) {
+            headerRowIndex = 0;
+          }
+          var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
+          csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+          cache[filename] = csv;
+          return csv;
+        } catch (e) {
+          console.error('XLSX Processing Error:', e);
+          return "";
+        }
+      }
+      return gk_fileData[filename] || "";
+    }
+  </script>
+  <script type="text/babel">
+    console.log('Dependencies:', {
+      React: !!window.React,
+      ReactDOM: !!window.ReactDOM,
+      Babel: !!window.Babel,
+      Leaflet: !!window.L
+    });
+
+    if (!window.React || !window.ReactDOM || !window.Babel || !window.L) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('error').style.display = 'block';
+      document.getElementById('error').innerText = 'Required dependencies (React, ReactDOM, Babel, or Leaflet) failed to load. Please check your network or try a different browser.';
+      throw new Error('Dependency load failure');
+    }
+
+    const { useState, memo, Component, useEffect } = React;
+
+    class ErrorBoundary extends Component {
+      state = { hasError: false, error: null };
+      static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+      }
+      render() {
+        if (this.state.hasError) {
+          return (
+            <div className="p-4 text-center text-white">
+              <h2 className="text-xl font-bold">Something went wrong!</h2>
+              <p className="mt-2">{this.state.error?.message || 'Unknown error'}</p>
+              <p className="mt-2">Please check the console (F12) or refresh the page.</p>
+            </div>
+          );
+        }
+        return this.props.children;
+      }
+    }
+
+    const FallbackUI = () => (
+      <div className="flex flex-col h-full bg-gray-900 text-white">
+        <div className="bg-gradient-to-b from-[#00274C] to-[#004C8C] py-6 px-4 text-center">
+          <h1 className="text-4xl font-bold text-yellow-400">ActuateUMICH</h1>
+        </div>
+        <div className="p-4 text-center">
+          <p>Loading failed. Please refresh the page or check your network.</p>
+        </div>
+      </div>
+    );
+
+    const Header = memo(({ title, color = 'text-yellow-400' }) => (
+      <div className="bg-gradient-to-b from-[#00274C] to-[#004C8C] shadow-md border-b border-gray-300">
+        <div className="h-20 py-4 px-4 flex justify-center items-center">
+          <h1
+            className={`${color} text-4xl font-bold text-center tracking-tight header-title w-full`}
+            aria-label={`Section: ${title}`}
+          >
+            {title}
+          </h1>
+        </div>
+      </div>
+    ));
+
+    const App = () => {
+      const [currentPage, setCurrentPage] = useState('CampusMap');
+
+      const renderPage = () => {
+        switch (currentPage) {
+          case 'CampusMap':
+            return <CampusMap setCurrentPage={setCurrentPage} />;
+          case 'StayAlert':
+            return <StayAlert setCurrentPage={setCurrentPage} />;
+          case 'YourAI':
+            return <YourAI />;
+          case 'Settings':
+            return <Settings />;
+          case 'Emergency':
+            return <Emergency />;
+          default:
+            return <CampusMap setCurrentPage={setCurrentPage} />;
+        }
+      };
+
+      return (
+        <ErrorBoundary>
+          <div className="h-screen flex flex-col">
+            <div className="flex-1 overflow-y-auto">
+              {renderPage()}
+            </div>
+            {currentPage !== 'Emergency' && !currentPage.startsWith('StayAlert-') && !currentPage.startsWith('Settings-') && (
+              <>
+                <div className="border-t border-gray-300 mt-2"></div>
+                <nav className="flex justify-around py-3 bg-gradient-to-b from-[#00274C] to-[#004C8C] shadow-lg">
+                  <button
+                    onClick={() => setCurrentPage('CampusMap')}
+                    className={`flex flex-col items-center p-3 ${currentPage === 'CampusMap' ? 'text-yellow-400' : 'text-white'}`}
+                    aria-label="View Campus Map"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span className="text-xs mt-1">Map</span>
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage('StayAlert')}
+                    className={`flex flex-col items-center p-3 ${currentPage === 'StayAlert' ? 'text-yellow-400' : 'text-white'}`}
+                    aria-label="View Alerts"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                    </svg>
+                    <span className="text-xs mt-1">Alerts</span>
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage('YourAI')}
+                    className={`flex flex-col items-center p-3 ${currentPage === 'YourAI' ? 'text-yellow-400' : 'text-white'}`}
+                    aria-label="View AI Assistant"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                    <span className="text-xs mt-1">A.I.</span>
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage('Settings')}
+                    className={`flex flex-col items-center p-3 ${currentPage === 'Settings' ? 'text-yellow-400' : 'text-white'}`}
+                    aria-label="View Settings"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37 1 .608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span className="text-xs mt-1">Settings</span>
+                  </button>
+                </nav>
+              </>
+            )}
+          </div>
+        </ErrorBoundary>
+      );
+    };
+
+    const CampusMap = memo(({ setCurrentPage }) => {
+      const [search, setSearch] = useState('');
+
+      const handleIndicatorClick = (subPage) => {
+        setCurrentPage('StayAlert');
+        setCurrentPage((prev) => ({ page: 'StayAlert', subPage }));
+      };
+
+      useEffect(() => {
+        const map = L.map('map', {
+          center: [42.2780, -83.7382],
+          zoom: 15,
+          zoomControl: true,
+        });
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          maxZoom: 19,
+        }).addTo(map);
+
+        const createCustomIcon = (color) => {
+          return L.divIcon({
+            className: 'map-marker',
+            html: `<div style="background-color: ${color}; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; font-weight: bold;">!</div>`,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+          });
+        };
+
+        const userIcon = L.divIcon({
+          className: 'user-marker',
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
+        });
+
+        L.marker([42.2753, -83.7355], { icon: createCustomIcon('#dc2626') })
+          .addTo(map)
+          .on('click', () => handleIndicatorClick('SuspiciousActivity'));
+
+        L.marker([42.2800, -83.7320], { icon: createCustomIcon('#facc15') })
+          .addTo(map)
+          .on('click', () => handleIndicatorClick('HeavyTraffic'));
+
+        L.marker([42.2710, -83.7350], { icon: createCustomIcon('#fb923c') })
+          .addTo(map)
+          .on('click', () => handleIndicatorClick('RoadClosure'));
+
+        L.marker([42.2760, -83.7340], { icon: userIcon })
+          .addTo(map)
+          .bindPopup('You are here')
+          .openPopup();
+
+        return () => {
+          map.remove();
+        };
+      }, []);
+
+      return (
+        <div className="flex flex-col h-full">
+          <Header title="CAMPUS MAP" />
+          <div className="px-4 pt-4">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search Map (e.g., Michigan Union)"
+                className="w-full p-2 rounded text-black text-sm pr-8 focus:ring-2 focus:ring-blue-500"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search campus map"
+              />
+              {search && (
+                <button
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500"
+                  onClick={() => setSearch('')}
+                  aria-label="Clear search"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex-1 p-4">
+            <div id="map" className="map-container"></div>
+          </div>
+        </div>
+      );
+    });
+
+    const StayAlert = ({ setCurrentPage }) => {
+      const initialSubPage = typeof setCurrentPage === 'object' ? setCurrentPage.subPage : null;
+      const [subPage, setSubPage] = useState(initialSubPage);
+
+      if (subPage === 'SuspiciousActivity') {
+        return <SuspiciousActivityDetails setSubPage={setSubPage} setCurrentPage={setCurrentPage} />;
+      }
+      if (subPage === 'HeavyTraffic') {
+        return <HeavyTrafficDetails setSubPage={setSubPage} setCurrentPage={setCurrentPage} />;
+      }
+      if (subPage === 'RoadClosure') {
+        return <RoadClosureDetails setSubPage={setSubPage} setCurrentPage={setCurrentPage} />;
+      }
+
+      return (
+        <div className="flex flex-col h-full">
+          <Header title="STAY ALERT" />
+          <div className="p-4 space-y-4">
+            <div className="bg-gradient-to-b from-gray-600 to-gray-700 p-4 rounded-md shadow-md" role="alert">
+              <h2 className="text-lg font-semibold flex items-center">
+                <svg className="w-6 h-6 mr-2 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-label="Warning Icon">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Suspicious Activity
+              </h2>
+              <p className="text-sm">Suspicious individual reported near Michigan Union. Stay aware and report any concerns to campus security.</p>
+              <p className="text-xs text-gray-300 mt-1">Posted: 3:45 PM, Apr 24, 2025</p>
+              <button
+                onClick={() => setSubPage('SuspiciousActivity')}
+                className="text-blue-300 mt-2 text-sm hover:text-blue-200 px-4 py-2 rounded-md hover:bg-blue-500/10 transition"
+              >
+                LEARN MORE →
+              </button>
+            </div>
+            <div className="bg-gradient-to-b from-gray-600 to-gray-700 p-4 rounded-md shadow-md">
+              <h2 className="text-lg font-semibold flex items-center">
+                <svg className="w-6 h-6 mr-2 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-label="Traffic Icon">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 13h3a3 3 0 003-3V8a3 3 0 00-3-3H8a3 3 0 00-3 3v2a3 3 0 003 3h3v2H5a1 1 0 00-1 1v2a1 1 0 001 1h14a1 1 0 001-1v-2a1 1 0 00-1-1h-6v-2z" />
+                </svg>
+                Heavy Traffic
+              </h2>
+              <p className="text-sm">Expect delays near State Street and North University Avenue. High congestion due to game-day traffic.</p>
+              <p className="text-xs text-gray-300 mt-1">Posted: 2:00 PM, Apr 24, 2025</p>
+              <button
+                onClick={() => setSubPage('HeavyTraffic')}
+                className="text-blue-300 mt-2 text-sm hover:text-blue-200 px-4 py-2 rounded-md hover:bg-blue-500/10 transition"
+              >
+                LEARN MORE →
+              </button>
+            </div>
+            <div className="bg-gradient-to-b from-gray-600 to-gray-700 p-4 rounded-md shadow-md">
+              <h2 className="text-lg font-semibold flex items-center">
+                <svg className="w-6 h-6 mr-2 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-label="Road Closure Icon">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-2-2m0 0l-2 2m2-2V3m0 11v7M5 14l2-2m0 0l2 2m-2-2V3m0 11v7" />
+                </svg>
+                Road Closure
+              </h2>
+              <p className="text-sm">South University Avenue closed due to construction. Use Hill Street for faster travel.</p>
+              <p className="text-xs text-gray-300 mt-1">Posted: 8:00 AM, Apr 24, 2025</p>
+              <button
+                onClick={() => setSubPage('RoadClosure')}
+                className="text-blue-300 mt-2 text-sm hover:text-blue-200 px-4 py-2 rounded-md hover:bg-blue-500/10 transition"
+              >
+                LEARN MORE →
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const SuspiciousActivityDetails = ({ setSubPage, setCurrentPage }) => (
+      <div className="flex flex-col h-full">
+        <Header title="SUSPICIOUS ACTIVITY" color="text-yellow-400" />
+        <div className="px-4 py-2 text-sm text-blue-300 cursor-pointer" onClick={() => setCurrentPage('CampusMap')}>
+          ← Back to Home
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="bg-gradient-to-b from-gray-600 to-gray-700 p-4 rounded-md shadow-md">
+            <h2 className="text-lg font-semibold">Details</h2>
+            <p className="text-sm">A suspicious individual was reported near the Michigan Union at 3:45 PM on April 24, 2025.</p>
+            <p className="text-sm mt-2">Description: Wearing a dark hoodie and jeans, last seen moving toward the Diag.</p>
+          </div>
+          <div className="bg-gradient-to-b from-gray-600 to-gray-700 p-4 rounded-md shadow-md">
+            <h2 className="text-lg font-semibold">Recommended Actions</h2>
+            <p className="text.sm">Stay vigilant and avoid the area if possible.</p>
+            <p className="text.sm mt-2">Report any suspicious behavior to campus security at (734) 763-1131.</p>
+          </div>
+          <button
+            onClick={() => setSubPage(null)}
+            className="w-full bg-blue-600 p-2 rounded-md text-center text.sm border border-blue-500 hover:bg-blue-700 hover:scale-105 transition-transform"
+          >
+            ← BACK TO STAY ALERT
+          </button>
+        </div>
+      </div>
+    );
+
+    const HeavyTrafficDetails = ({ setSubPage, setCurrentPage }) => (
+      <div className="flex flex-col h-full">
+        <Header title="HEAVY TRAFFIC" color="text-red-400" />
+        <div className="px-4 py-2 text-sm text-blue-300 cursor-pointer" onClick={() => setCurrentPage('CampusMap')}>
+          ← Back to Home
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="bg-gradient-to-b from-gray-600 to-gray-700 p-4 rounded-md shadow-md">
+            <h2 className="text-lg font-semibold">Details</h2>
+            <p className="text.sm">Heavy traffic reported near State Street and North University Avenue starting at 2:00 PM on April 24, 2025.</p>
+            <p className="text.sm mt-2">Cause: High congestion due to a football game at Michigan Stadium.</p>
+          </div>
+          <div className="bg-gradient-to-b from-gray-600 to-gray-700 p-4 rounded-md shadow-md">
+            <h2 className="text-lg font-semibold">Recommended Actions</h2>
+            <p className="text.sm">Consider alternate routes such as Washtenaw Avenue or Huron Street.</p>
+            <p className="text.sm mt-2">Expect delays of up to 30 minutes in the affected area.</p>
+          </div>
+          <button
+            onClick={() => setSubPage(null)}
+            className="w-full bg-blue-600 p-2 rounded-md text-center text.sm border border-blue-500 hover:bg-blue-700 hover:scale-105 transition-transform"
+          >
+            ← BACK TO STAY ALERT
+          </button>
+        </div>
+      </div>
+    );
+
+    const RoadClosureDetails = ({ setSubPage, setCurrentPage }) => (
+      <div className="flex flex-col h-full">
+        <Header title="ROAD CLOSURE" color="text-orange-400" />
+        <div className="px-4 py-2 text-sm text-blue-300 cursor-pointer" onClick={() => setCurrentPage('CampusMap')}>
+          ← Back to Home
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="bg-gradient-to-b from-gray-600 to-gray-700 p-4 rounded-md shadow-md">
+            <h2 className="text-lg font-semibold">Details</h2>
+            <p className="text.sm">South University Avenue is closed starting at 8:00 AM on April 24, 2025, and will remain closed until 6:00 PM on April 26, 2025.</p>
+            <p className="text.sm mt-2">Cause: Road construction and repaving.</p>
+          </div>
+          <div className="bg-gradient-to-b from-gray-600 to-gray-700 p-4 rounded-md shadow-md">
+            <h2 className="text-lg font-semibold">Affected Areas</h2>
+            <p className="text.sm">The closure affects the stretch between Washtenaw Avenue and Hill Street.</p>
+          </div>
+          <div className="bg-gradient-to-b from-gray-600 to-gray-700 p-4 rounded-md shadow-md">
+            <h2 className="text-lg font-semibold">Recommended Actions</h2>
+            <p className="text.sm">Use Hill Street or Washtenaw Avenue as alternate routes to avoid delays.</p>
+            <p className="text.sm mt-2">Plan for additional travel time if you need to access nearby areas.</p>
+          </div>
+          <button
+            onClick={() => setSubPage(null)}
+            className="w-full bg-blue-600 p-2 rounded-md text-center text.sm border border-blue-500 hover:bg-blue-700 hover:scale-105 transition-transform"
+          >
+            ← BACK TO STAY ALERT
+          </button>
+        </div>
+      </div>
+    );
+
+    const YourAI = memo(() => {
+      const [question, setQuestion] = useState('');
+
+      const handleAskMaizie = () => {
+        if (question.trim()) {
+          alert(`Maizie: I received your question: "${question}". For now, I'm a demo bot, but soon I'll be able to answer safety and navigation questions!`);
+          setQuestion('');
+        }
+      };
+
+      const handleSampleQuestion = (q) => {
+        setQuestion(q);
+        setTimeout(() => handleAskMaizie(), 100);
+      };
+
+      const [notificationPref, setNotificationPref] = useState('All Updates');
+
+      return (
+        <div className="flex flex-col h-full">
+          <Header title="YOUR A.I." />
+          <div className="p-4 space-y-6">
+            <div className="flex items-center space-x-4 fade-in">
+              <img
+                src="https://i.ibb.co/p6ddjJFW/Maizie.jpg"
+                alt="Maizie the Security Bot"
+                className="w-32 h-32 rounded-lg shadow-md"
+              />
+              <div className="speech-bubble">
+                <p className="text-sm font-medium">
+                  Hi! I'm Maizie, your interactive AI security bot. Ask me about safety, security, or how to use the app!
+                </p>
+              </div>
+            </div>
+            <div className="bg-gradient-to-b from-gray-600 to-gray-700 p-4 rounded-md shadow-md">
+              <h2 className="text-lg font-semibold flex items-center">
+                <svg className="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                Ask Maizie
+              </h2>
+              <div className="mt-2 flex items-center space-x-2">
+                <input
+                  type="text"
+                  placeholder="Ask Maizie about safety or navigation..."
+                  className="w-full p-3 rounded-lg text-black text-sm focus:ring-2 focus:ring-blue-500"
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleAskMaizie()}
+                  aria-label="Ask Maizie a question"
+                />
+                <button
+                  onClick={handleAskMaizie}
+                  className="bg-blue-600 p-3 rounded-lg hover:bg-blue-700 transition"
+                  disabled={!question.trim()}
+                  aria-label="Send question to Maizie"
+                >
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
+              </div>
+              <div className="mt-3 space-y-2">
+                <p className="text-sm font-medium">Sample Questions:</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => handleSampleQuestion('What should I do during an active shooter event?')}
+                    className="bg-blue-500/20 text-blue-300 px-3 py-1 rounded-full text-xs hover:bg-blue-500/40 transition"
+                  >
+                    Active shooter protocol?
+                  </button>
+                  <button
+                    onClick={() => handleSampleQuestion('How do I report suspicious activity?')}
+                    className="bg-blue-500/20 text-blue-300 px-3 py-1 rounded-full text-xs hover:bg-blue-500/40 transition"
+                  >
+                    Report suspicious activity?
+                  </button>
+                  <button
+                    onClick={() => handleSampleQuestion('How do I navigate to the nearest safe zone?')}
+                    className="bg-blue-500/20 text-blue-300 px-3 py-1 rounded-full text-xs hover:bg-blue-500/40 transition"
+                  >
+                    Find nearest safe zone?
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gradient-to-b from-gray-600 to-gray-700 p-4 rounded-md shadow-md">
+              <h2 className="text-lg font-semibold flex items-center">
+                <svg className="w-5 h-5 mr-2 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                Customize Notifications
+              </h2>
+              <p className="text-sm mt-2">Choose how you'd like to receive updates:</p>
+              <select
+                className="w-full p-2 mt-2 rounded text-black text-sm focus:ring-2 focus:ring-blue-500"
+                value={notificationPref}
+                onChange={(e) => setNotificationPref(e.target.value)}
+                aria-label="Select notification preference"
+              >
+                <option value="All Updates">All Updates</option>
+                <option value="Weekdays Only">Weekdays Only</option>
+                <option value="Emergencies Only">Emergencies Only</option>
+                <option value="Critical Alerts">Critical Alerts Only</option>
+              </select>
+              <p className="text-xs text-gray-300 mt-2">Preference saved: {notificationPref}</p>
+            </div>
+          </div>
+        </div>
+      );
+    });
+
+    const Settings = () => {
+      const [subPage, setSubPage] = useState(null);
+
+      if (subPage === 'Emergency') {
+        return <Emergency />;
+      }
+      if (subPage === 'LocationSettings') {
+        return <LocationSettings setSubPage={setSubPage} />;
+      }
+      if (subPage === 'GiveFeedback') {
+        return <GiveFeedback setSubPage={setSubPage} />;
+      }
+
+      return (
+        <div className="flex flex-col h-full">
+          <Header title="SETTINGS" />
+          <div className="p-4 space-y-2">
+            <h2 className="text.sm font-semibold text-yellow-400">GENERAL</h2>
+            <button className="w-full bg-gradient-to-b from-gray-600 to-gray-700 p-2 rounded-md text-left flex justify-between text.sm shadow-md hover:bg-gray-500">
+              Permissions <span>→</span>
+            </button>
+            <button
+              onClick={() => setSubPage('LocationSettings')}
+              className="w-full bg-gradient-to-b from-gray-600 to-gray-700 p-2 rounded-md text-left flex justify-between text.sm shadow-md hover:bg-gray-500"
+            >
+              Location Settings <span>→</span>
+            </button>
+            <button className="w-full bg-gradient-to-b from-gray-600 to-gray-700 p-2 rounded-md text-left flex justify-between text.sm shadow-md hover:bg-gray-500">
+              App Appearance <span>→</span>
+            </button>
+            <button className="w-full bg-gradient-to-b from-gray-600 to-gray-700 p-2 rounded-md text-left flex justify-between text.sm shadow-md hover:bg-gray-500">
+              Schedule <span>→</span>
+            </button>
+            <h2 className="text.sm font-semibold text-yellow-400 mt-4">SPECIAL OFFERS</h2>
+            <button className="w-full bg-gradient-to-b from-gray-600 to-gray-700 p-2 rounded-md text-left flex justify-between text.sm shadow-md hover:bg-gray-500">
+              Promotions <span>→</span>
+            </button>
+            <button className="w-full bg-gradient-to-b from-gray-600 to-gray-700 p-2 rounded-md text-left flex justify-between text.sm shadow-md hover:bg-gray-500">
+              Events <span>→</span>
+            </button>
+            <h2 className="text.sm font-semibold text-yellow-400 mt-4">CONNECT</h2>
+            <button
+              onClick={() => setSubPage('GiveFeedback')}
+              className="w-full bg-gradient-to-b from-gray-600 to-gray-700 p-2 rounded-md text-left flex justify-between text.sm shadow-md hover:bg-gray-500"
+            >
+              Give Feedback <span>→</span>
+            </button>
+            <button className="w-full bg-gradient-to-b from-gray-600 to-gray-700 p-2 rounded-md text-left flex justify-between text.sm shadow-md hover:bg-gray-500">
+              Help & FAQ <span>→</span>
+            </button>
+            <button
+              onClick={() => {
+                if (navigator.vibrate) navigator.vibrate(200);
+                setSubPage('Emergency');
+              }}
+              className="w-full bg-red-600 p-2 rounded-md text-center text.sm shadow-md sos-button hover:bg-red-700"
+              aria-label="Activate Emergency SOS"
+            >
+              PRESS FOR SOS
+            </button>
+          </div>
+        </div>
+      );
+    };
+
+    const LocationSettings = ({ setSubPage }) => {
+      const [isLocationShared, setIsLocationShared] = useState(false);
+
+      return (
+        <div className="flex flex-col h-full">
+          <Header title="LOCATION SETTINGS" />
+          <div className="p-4 space-y-4">
+            <div className="bg-gradient-to-b from-gray-600 to-gray-700 p-4 rounded-md shadow-md">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Share Location</h2>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={isLocationShared}
+                    onChange={() => setIsLocationShared(!isLocationShared)}
+                    aria-label="Toggle location sharing"
+                  />
+                  <span className="slider"></span>
+                  <span className="bg-toggle absolute inset-0 rounded-full"></span>
+                </label>
+              </div>
+              <p className="text-xs mt-2 text-gray-300">
+                REMINDER: Your shared location is private and not accessible to administrators. Shared location enhances safety alerts.
+              </p>
+            </div>
+            <button
+              onClick={() => setSubPage(null)}
+              className="w-full bg-blue-600 p-2 rounded-md text-center text.sm border border-blue-500 hover:bg-blue-700 hover:scale-105 transition-transform"
+            >
+              ← BACK TO SETTINGS
+            </button>
+          </div>
+        </div>
+      );
+    };
+
+    const GiveFeedback = ({ setSubPage }) => {
+      const [feedback, setFeedback] = useState('');
+
+      const handleSubmit = () => {
+        alert('Feedback submitted successfully!');
+        setFeedback('');
+      };
+
+      return (
+        <div className="flex flex-col h-full">
+          <Header title="GIVE FEEDBACK" />
+          <div className="p-4 space-y-4">
+            <div className="bg-gradient-to-b from-gray-600 to-gray-700 p-4 rounded-md shadow-md">
+              <h2 className="text-lg font-semibold">Help Us Address Any Concerns!</h2>
+              <textarea
+                className="w-full p-2 mt-2 rounded text-black text.sm h-32 resize-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Provide your feedback on the app..."
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                aria-label="Feedback input"
+              ></textarea>
+            </div>
+            <button
+              onClick={handleSubmit}
+              className="w-full bg-blue-600 p-2 rounded-md text-center text.sm border border-blue-500 hover:bg-blue-700 hover:scale-105 transition-transform"
+            >
+              SUBMIT FEEDBACK
+            </button>
+            <button
+              onClick={() => setSubPage(null)}
+              className="w-full bg-blue-600 p-2 rounded-md text-center text.sm border border-blue-500 hover:bg-blue-700 hover:scale-105 transition-transform"
+            >
+              ← BACK TO SETTINGS
+            </button>
+          </div>
+        </div>
+      );
+    };
+
+    const Emergency = memo(() => (
+      <div className="flex flex-col h-full">
+        <Header title="EMERGENCY" color="text-red-400" />
+        <div className="p-4 space-y-4">
+          <div className="bg-gradient-to-b from-gray-800 to-gray-900 p-4 rounded-md text-center shadow-md border border-red-500" role="alert">
+            <div className="flex items-center justify-center">
+              <svg className="w-6 h-6 mr-2 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-label="Warning Icon">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <h2 className="text-lg font-semibold">Current Emergency</h2>
+            </div>
+            <p className="text-2xl font-bold text-red-400 mt-2">Active Shooter</p>
+            <p className="text-xs text-gray-400 mt-1">Reported: 4:00 PM, Apr 24, 2025</p>
+          </div>
+          <div className="bg-gradient-to-b from-gray-600 to-gray-700 p-4 rounded-md shadow-md" role="alert">
+            <div className="flex items-center">
+              <svg className="w-5 h-5 mr-2 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-label="Location Icon">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <h2 className="text-lg font-semibold">Threat Updates</h2>
+            </div>
+            <div className="mt-2">
+              <p className="text-sm font-medium">Location:</p>
+              <ul className="text-sm list-disc list-inside">
+                <li>Moving south on State St.</li>
+                <li>Near Michigan Union</li>
+              </ul>
+              <p className="text-sm font-medium mt-2">Distance:</p>
+              <p className="text-sm text-red-300">0.8 miles northwest of you</p>
+              <p className="text-sm font-medium mt-2">Last Seen:</p>
+              <p className="text-sm text-gray-300">4:15 PM, Apr 24, 2025</p>
+              <p className="text-sm font-medium mt-2">Suspect Description:</p>
+              <ul className="text-sm list-disc list-inside">
+                <li>Male, approx. 6' tall</li>
+                <li>Wearing a black hoodie, blue jeans</li>
+                <li>Carrying a backpack</li>
+              </ul>
+            </div>
+          </div>
+          <div className="bg-gradient-to-b from-gray-600 to-gray-700 p-4 rounded-md shadow-md">
+            <div className="flex items-center">
+              <svg className="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-label="Action Icon">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+              <h2 className="text-lg font-semibold">Actions to Take</h2>
+            </div>
+            <div className="mt-2">
+              <p className="text-sm font-medium">Immediate Action:</p>
+              <p className="text-sm text-white">Take cover in 'Alpha Chi Sigma' building to your left.</p>
+              <p className="text-sm font-medium mt-2">Safety Protocol:</p>
+              <ul className="text-sm list-disc list-inside">
+                <li>Run: Evacuate if safe.</li>
+                <li>Hide: Find a secure location, lock doors.</li>
+                <li>Fight: As a last resort, act against the threat.</li>
+              </ul>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <a
+              href="tel:7347631131"
+              className="w-full bg-red-600 p-3 rounded-md text-center text-base font-semibold shadow-md hover:bg-red-700 hover:scale-105 transition-transform flex items-center justify-center"
+              aria-label="Call Campus Security"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+              Call Campus Security
+            </a>
+            <a
+              href="tel:911"
+              className="w-full bg-red-700 p-3 rounded-md text-center text-base font-semibold shadow-md hover:bg-red-800 hover:scale-105 transition-transform flex items-center justify-center"
+              aria-label="Call 911"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+              Call 911
+            </a>
+            <button
+              className="w-full bg-blue-600 p-3 rounded-md text-center text-base font-semibold border border-blue-500 hover:bg-blue-700 hover:scale-105 transition-transform flex items-center justify-center"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A2 2 0 013 15.382V5.618a2 2 0 011.553-1.894L9 2m0 18l6-3m-6 3V2m6 17l5.447-2.724A2 2 0 0021 15.382V5.618a2 2 0 00-1.553-1.894L15 2m0 0l-6 3m0 0l-6-3m12 0v13" />
+              </svg>
+              View Map for Details
+            </button>
+          </div>
+        </div>
+      </div>
+    ));
+
+    try {
+      console.log('Attempting to render React app...');
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('root').style.display = 'block';
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+      console.log('React app rendered successfully');
+    } catch (error) {
+      console.error('Rendering error:', error);
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('error').style.display = 'block';
+      document.getElementById('error').innerText = `Rendering failed: ${error.message}. Please check the console (F12) or refresh.`;
+    }
+  </script>
+</body>
+</html>
