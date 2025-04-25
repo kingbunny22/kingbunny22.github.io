@@ -1,0 +1,20 @@
+{
+  "name": "ActuateUMICH",
+  "short_name": "ActuateUMICH",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#00274C",
+  "theme_color": "#00274C",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/192x192.png?text=ActuateUMICH",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://via.placeholder.com/512x512.png?text=ActuateUMICH",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
